@@ -74,7 +74,7 @@ warnings.filterwarnings("ignore")
 
 # A:        
 if len(sys.argv) != 3:
-    print("Usage: python get_nl.py epoch(e.g. 20160503)")
+    print("Usage: python get_nl.py epoch(e.g. 20160503) #psf_stars(e.g. 9)")
     sys.exit(1)
 
 epoch = sys.argv[1]
