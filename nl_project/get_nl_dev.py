@@ -67,17 +67,20 @@ from astropy.io import fits
 from astropy.table import Table
 from astropy.nddata import Cutout2D
 from astropy.wcs import WCS
+import sys
+import re
 
 warnings.filterwarnings("ignore")
 
-# A:
-        
-epoch = input('epoch (e.g. 20160503): ')
-stf_ver = input('legacy or sinpsf: ')
-if stf_ver == 'legacy':
-    stf = 'v2_3'
-if stf_ver == 'sinpsf':
-    stf = 'v3_1'
+# A:        
+if len(sys.argv) != 3:
+    print("Usage: python get_nl.py epoch(e.g. 20160503)")
+    sys.exit(1)
+
+epoch = sys.argv[1]
+psf_num = sys.argv[2]
+
+stf = 'v3_1'
     
     
 # Function to identify stars not named in Grant's Work
@@ -124,7 +127,14 @@ def find_stars(ind_lis, epoch, star):
     
 # Read in psf star list 
 #psf_stf_loc = '/g/ghez/data/dr/{0}/source_list/psf_central.dat'.format('dr1')
-psf_stf_loc = '/u/ciurlo/Research/starfinder_tests/PSFstars_lists/25_PSFstars/psf_central.dat'
+if psf_num == '9':
+    psf_stf_loc = '/u/ciurlo/Research/starfinder_tests/PSFstars_lists/9_PSFstars/psf_central.dat'
+if psf_num == '13':
+    psf_stf_loc = '/u/ciurlo/Research/starfinder_tests/PSFstars_lists/13_PSFstars/psf_central.dat'
+if psf_num == '25':
+    psf_stf_loc = '/u/ciurlo/Research/starfinder_tests/PSFstars_lists/25_PSFstars/psf_central.dat'
+else:
+    pass
 psf_stf_lis = Table.read(psf_stf_loc, format = 'ascii.commented_header', delimiter = '\s')
 
 # Get list of PSF stars
@@ -165,21 +175,34 @@ for mag in psf_mag:
     
 # Get max counts/coadd of highest strehl raw frame of image
 strehl_loc = '/g/ghez/data/dr/{0}/clean/{1}nirc2/kp/strehl_source.txt'.format('dr1', epoch)
-strehl_lis = Table.read(strehl_loc, format = 'ascii.no_header', delimiter = '\s')
+try:
+    strehl_lis = Table.read(strehl_loc, format = 'ascii.no_header', delimiter = '\s')
+except:
+    strehl_loc = '/g/ghez/data/dr/{0}/combo/{1}nirc2/clean/kp/strehl_source.txt'.format('dr1', epoch)
+    strehl_lis = Table.read(strehl_loc, format = 'ascii.no_header', delimiter = '\s')
 strehl_max = np.max(strehl_lis['col2'])
 guide = np.where(strehl_lis['col2'] == strehl_max)[0]
 raw_frame = str((strehl_lis['col1'][guide][0])).replace('c', 'n')
 
 raw_loc = '/g/ghez/data/dr/{0}/raw/{1}nirc2/{2}'.format('dr1', epoch, raw_frame)
-
-hdu = fits.open(raw_loc, ignore_missing_end = True)
+try:
+    hdu = fits.open(raw_loc, ignore_missing_end = True)
+except:
+    ds_file = f'/g/ghez/data/dr/dr1/combo/{epoch}nirc2/clean/kp/data_sources.txt'
+    ds_lis = Table.read(ds_file, format = 'ascii.no_header', delimiter = '\s')
+    guide = (np.where((ds_lis['col1'] == strehl_lis['col1'][guide][0])))[0]
+    single_night = str((ds_lis['col3'][guide][0])[25:36]).replace('-', '')
+    raw_loc = f'/g/ghez/data/dr/dr1/raw/{single_night}nirc2/*{raw_frame[2:]}'
+    raw_loc = (glob.glob(raw_loc))[0]
+    hdu = fits.open(raw_loc, ignore_missing_end = True)
+    
 wcs = WCS(hdu[0].header)
 data = hdu[0].data
 
 star_loc = []
 
 # Need individual frame locations, use Grant's work 
-ind_loc = '/g/ghez/data/dr/dr1/starlists/ind_frames/{0}nirc2/kp/starfinder_v3_0_0/align*/lis/{1}_0.6_stf_cal.lis'.format(epoch,(str((strehl_lis['col1'][guide][0])))[0:5])
+ind_loc = '/g/ghez/data/dr/dr1/starlists/ind_frames/{0}nirc2/kp/starfinder_v3_0_0/align*/lis/*{1}_0.6_stf_cal.lis'.format(single_night,(str((strehl_lis['col1'][guide][0])))[2:5])
 match = (glob.glob(ind_loc))[0]
 
 
@@ -270,14 +293,12 @@ dat_f = pd.DataFrame({'PSF Stars': psf_stars, 'Max Counts/COADD': maxcounts,
                    'Normalized Flux' : psf_flux,
                   'Deviation (%)': dev_list, 'x_axis': x_axis})
 
-dat_f.to_csv('{0}/dev_{1}_{2}.csv'.format(os.getcwd(), epoch, stf_ver))
-subprocess.run(['open', '{0}/dev_{1}_{2}.csv'.format(os.getcwd(), epoch, stf_ver)], check=True)
-
+dat_f.to_csv('{0}/dev_{1}.csv'.format(os.getcwd(), epoch))
 sns.set_style('darkgrid')
 plt.figure(figsize = (8,8))
 sns.histplot(data = dat_f, x = 'Deviation (%)')
-plt.title('{0} (Frame {2}) in {1}'.format(epoch, stf_ver, raw_frame))
-plt.savefig('{0}/dev_hist_{1}_{2}.jpg'.format(os.getcwd(), epoch, stf_ver), format = 'jpg')
+plt.title('{0} (Frame {1})'.format(epoch, raw_frame))
+plt.savefig('{0}/dev_hist_{1}.jpg'.format(os.getcwd(), epoch), format = 'jpg')
 plt.show()
 
 
@@ -289,7 +310,7 @@ plt.plot(lin, x, label = 'Linear')
 sns.scatterplot(data = dat_f, x = 'x_axis', y = 'Max Counts/COADD', hue = 'PSF Stars')
 plt.xlabel('Actual Counts/COADD', fontsize = len(psf_stars)/1.5)
 plt.ylabel('Theoretical Counts/COADD', fontsize = len(psf_stars)/1.5)
-plt.title('{0} (Frame {2}) in {1}'.format(epoch, stf_ver, raw_frame), fontsize = len(psf_stars)/1.5)
+plt.title('{0} (Frame {1})'.format(epoch, raw_frame), fontsize = len(psf_stars)/1.5)
 plt.legend()
-plt.savefig('{0}/dev_{1}_{2}.jpg'.format(os.getcwd(), epoch, stf_ver), format = 'jpg')
+plt.savefig('{0}/dev_{1}.jpg'.format(os.getcwd(), epoch), format = 'jpg')
 plt.show()
