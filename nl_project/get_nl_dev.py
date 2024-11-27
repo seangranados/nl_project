@@ -80,7 +80,8 @@ if len(sys.argv) != 3:
 epoch = sys.argv[1]
 psf_num = sys.argv[2]
 
-stf = 'v3_1'
+stf = 'v4_0'
+dr = 'dr2'
     
     
 # Function to identify stars not named in Grant's Work
@@ -92,7 +93,7 @@ def find_stars(ind_lis, epoch, star):
     # 3. Apply transformation to Grant's work and match the location with the star name given in rms_named.lis
     
     # Read in rms_named.lis file, only keep named stars
-    rms_named_file = f'/g/ghez/data/dr/dr1/starlists/combo/{epoch}nirc2/starfinder_{stf}/mag{epoch}nirc2_kp_rms_named.lis'
+    rms_named_file = f'/g/ghez/data/dr/{dr}/starlists/combo/{epoch}nirc2/starfinder_{stf}/mag{epoch}nirc2_kp_rms_named.lis'
     rms_named_lis = Table.read(rms_named_file, format = 'ascii.commented_header', delimiter = '\s')
     indices_to_remove = [index for index, value in enumerate(rms_named_lis['name']) if value.startswith('star')] 
     rms_named_lis.remove_rows(indices_to_remove)
@@ -133,6 +134,8 @@ if psf_num == '13':
     psf_stf_loc = '/u/ciurlo/Research/starfinder_tests/PSFstars_lists/13_PSFstars/psf_central.dat'
 if psf_num == '25':
     psf_stf_loc = '/u/ciurlo/Research/starfinder_tests/PSFstars_lists/25_PSFstars/psf_central.dat'
+if psf_num == 'phot':
+    psf_stf_loc = '/u/seanz/nl_project/psf_central.dat'
 else:
     pass
 psf_stf_lis = Table.read(psf_stf_loc, format = 'ascii.commented_header', delimiter = '\s')
@@ -145,8 +148,9 @@ for psf, i in enumerate(psf_stf_lis['PSF']):
     else:
         continue
         
+print("Stars analyzing: ", psf_stars)
 # Read in psf flux star list
-flux_psf_loc = '/g/ghez/data/dr/{0}/starlists/combo/{1}nirc2/starfinder_{2}/mag{1}nirc2_kp_rms_named.lis'.format('dr1', epoch, stf)
+flux_psf_loc = '/g/ghez/data/dr/{0}/starlists/combo/{1}nirc2/starfinder_{2}/mag{1}nirc2_kp_rms_named.lis'.format(dr, epoch, stf)
 
 flux_psf_lis = Table.read(flux_psf_loc, format = 'ascii.commented_header', delimiter = '\s')
 
@@ -157,7 +161,7 @@ for star in psf_stars:
     psf_mag.append(flux_psf_lis['m'][guide])
     
 # Get zero point to convert mag to flux
-zp_loc = '/g/ghez/data/dr/{0}/starlists/combo/{1}nirc2/starfinder_{2}/mag{1}nirc2_kp_0.8_stf_cal.zer'.format('dr1', epoch, stf)
+zp_loc = '/g/ghez/data/dr/{0}/starlists/combo/{1}nirc2/starfinder_{2}/mag{1}nirc2_kp_0.8_stf_cal.zer'.format(dr, epoch, stf)
 
 with open(zp_loc, 'rt') as table_zp_loc:
     zp = table_zp_loc.readlines()
@@ -174,35 +178,44 @@ for mag in psf_mag:
     psf_flux.append(float((10**((zp-mag)/2.5))/s3_22))
     
 # Get max counts/coadd of highest strehl raw frame of image
-strehl_loc = '/g/ghez/data/dr/{0}/clean/{1}nirc2/kp/strehl_source.txt'.format('dr1', epoch)
+strehl_loc = '/g/ghez/data/dr/{0}/clean/{1}nirc2/kp/strehl_source.txt'.format(dr, epoch)
 try:
     strehl_lis = Table.read(strehl_loc, format = 'ascii.no_header', delimiter = '\s')
 except:
-    strehl_loc = '/g/ghez/data/dr/{0}/combo/{1}nirc2/clean/kp/strehl_source.txt'.format('dr1', epoch)
+    strehl_loc = '/g/ghez/data/dr/{0}/combo/{1}nirc2/clean/kp/strehl_source.txt'.format(dr, epoch)
     strehl_lis = Table.read(strehl_loc, format = 'ascii.no_header', delimiter = '\s')
+
 strehl_max = np.max(strehl_lis['col2'])
 guide = np.where(strehl_lis['col2'] == strehl_max)[0]
 raw_frame = str((strehl_lis['col1'][guide][0])).replace('c', 'n')
+# raw_frame = 'n0048.fits'
 
-raw_loc = '/g/ghez/data/dr/{0}/raw/{1}nirc2/{2}'.format('dr1', epoch, raw_frame)
+raw_loc = '/g/ghez/data/dr/{0}/raw/{1}nirc2/{2}'.format(dr, epoch, raw_frame)
 try:
     hdu = fits.open(raw_loc, ignore_missing_end = True)
 except:
-    ds_file = f'/g/ghez/data/dr/dr1/combo/{epoch}nirc2/clean/kp/data_sources.txt'
+    ds_file = f'/g/ghez/data/dr/{dr}/combo/{epoch}nirc2/clean/kp/data_sources.txt'
     ds_lis = Table.read(ds_file, format = 'ascii.no_header', delimiter = '\s')
     guide = (np.where((ds_lis['col1'] == strehl_lis['col1'][guide][0])))[0]
-    single_night = str((ds_lis['col3'][guide][0])[25:36]).replace('-', '')
-    raw_loc = f'/g/ghez/data/dr/dr1/raw/{single_night}nirc2/*{raw_frame[2:]}'
+    single_night = str((ds_lis['col3'][guide][0])[25:39]).replace('-', '')
+    raw_loc = f'/g/ghez/data/dr/{dr}/raw/{single_night}nirc2/*{raw_frame[2:]}'
     raw_loc = (glob.glob(raw_loc))[0]
     hdu = fits.open(raw_loc, ignore_missing_end = True)
     
+single_night = epoch
 wcs = WCS(hdu[0].header)
 data = hdu[0].data
 
 star_loc = []
 
 # Need individual frame locations, use Grant's work 
-ind_loc = '/g/ghez/data/dr/dr1/starlists/ind_frames/{0}nirc2/kp/starfinder_v3_0_0/align*/lis/*{1}_0.6_stf_cal.lis'.format(single_night,(str((strehl_lis['col1'][guide][0])))[2:5])
+if dr == 'dr2':
+    ind_loc = '/g/ghez/data/dr/{0}/starlists/ind_frames/{1}nirc2/kp/starfinder_v4_0_nonforce/{2}_0.6_stf.lis'.format(dr, single_night,raw_frame.replace('n', 'c')[0:5])
+    # ind_loc = '/g/ghez/data/dr/{0}/starlists/ind_frames/{1}nirc2/kp/starfinder_v4_0_nonforce/c0048_0.6_stf.lis'.format(dr, single_night)
+    
+else:
+    ind_loc = '/g/ghez/data/dr/{0}/starlists/ind_frames/{1}nirc2/kp/starfinder_v3_0_0/align*/lis/{2}_0.6_stf_cal.lis'.format(dr, single_night,raw_frame.replace('n','c')[0:5])
+print(ind_loc)
 match = (glob.glob(ind_loc))[0]
 
 
@@ -225,7 +238,8 @@ for j, star in enumerate(psf_stars):
 for i in range(len(psf_stars)):
     star_loc.append((star_x[i], star_y[i]))
     
-star_size = (80,80) # arbitrary, feel free to change
+    
+star_size = (20,20) # arbitrary, feel free to change
 
 cutout = []
 for i in range(len(star_loc)):
@@ -259,14 +273,26 @@ for i, mc in enumerate(maxcounts):
 
 # Get poly and linear
 x = np.linspace(0, 20000, 20000)
-M_poly = 1.001 - 6.9*10**(-6)*(x) - 0.70*10**(-10)*(x**2)
-M = 1.001 + x*M_poly
-lin = 1.001 + x
+if int(epoch[0:4]) >= 2024:
+
+    M_poly = 1.001 - 2*6.9*10**(-6)*(x) - 4*0.70*10**(-10)*(x**2)
+    M = 1.001 + x*M_poly
+    lin = 1.001 + x
 
 # Get Counts to deviation formula
-def m_poly(x):
-    m_poly = 1.001 - 6.9*10**(-6)*(x) - 0.70*10**(-10)*(x**2)
-    return (1.001 + x*m_poly)
+    def m_poly(x):
+        m_poly = 1.001 - 2*6.9*10**(-6)*(x) - 4*0.70*10**(-10)*(x**2)
+        return (1.001 + x*m_poly)
+        
+else:
+    M_poly = 1.001 - 6.9*10**(-6)*(x) - 0.70*10**(-10)*(x**2)
+    M = 1.001 + x*M_poly
+    lin = 1.001 + x
+
+# Get Counts to deviation formula
+    def m_poly(x):
+        m_poly = 1.001 - 6.9*10**(-6)*(x) - 0.70*10**(-10)*(x**2)
+        return (1.001 + x*m_poly)
 
 def linear(x):
     linear = 1.001 + x
@@ -279,7 +305,7 @@ for i in x:
     deviation.append((1 - actual/theo)*100)
 
 dev_list = []
-x_axis = []
+x_axis = [] # Actual Counts 
 for counts in maxcounts:
     for i in range(len(x)):
         if int(x[i]) == int(counts):
@@ -289,28 +315,83 @@ for counts in maxcounts:
     x_axis.append(m_poly(counts))
 
     
-dat_f = pd.DataFrame({'PSF Stars': psf_stars, 'Max Counts/COADD': maxcounts,
+if psf_num == 'phot':
+    dat_f = pd.DataFrame({'Cal Stars': psf_stars, 'Max Counts/COADD': maxcounts,
+                       'Normalized Flux' : psf_flux,
+                      'Deviation (%)': dev_list, 'x_axis': x_axis})
+else:
+    dat_f = pd.DataFrame({'PSF Stars': psf_stars, 'Max Counts/COADD': maxcounts,
                    'Normalized Flux' : psf_flux,
                   'Deviation (%)': dev_list, 'x_axis': x_axis})
+                  
+print(dat_f)
 
 dat_f.to_csv('{0}/dev_{1}.csv'.format(os.getcwd(), epoch))
-sns.set_style('darkgrid')
+
+# Setting plot style
+plt.style.use('default')
+plt.rcParams['font.size'] = 10
+plt.rcParams['xtick.minor.visible'] = True
+plt.rcParams['ytick.minor.visible'] = True
+plt.rcParams['xtick.direction'] = 'in'
+plt.rcParams['ytick.direction'] = 'in'
+plt.rcParams['xtick.major.size'] = 5
+plt.rcParams['ytick.major.size'] = 5
+plt.rcParams['xtick.minor.size'] = 3
+plt.rcParams['ytick.minor.size'] = 3
+
+plt.rcParams['xtick.labelsize'] = 10
+plt.rcParams['ytick.labelsize'] = 10
 plt.figure(figsize = (8,8))
-sns.histplot(data = dat_f, x = 'Deviation (%)')
+
+
+# sns.histplot(data = dat_f, x = 'Deviation (%)')
+plt.hist(dat_f['Deviation (%)'], bins = 15, edgecolor = 'black', hatch = '/', fill = False)
+plt.xlabel('(%) Non-linear')
+plt.ylabel('Number of Stars')
 plt.title('{0} (Frame {1})'.format(epoch, raw_frame))
 plt.savefig('{0}/dev_hist_{1}.jpg'.format(os.getcwd(), epoch), format = 'jpg')
-plt.show()
+# plt.show()
 
 
-# Plot 
-sns.set_style('darkgrid')
+# Plotting the Theoretical Counts/COADD vs the Actual strictly on the Metchev curve
 plt.figure(figsize = (len(psf_stars)/1.7, len(psf_stars)/1.7))
 plt.plot(M, x, label = 'Metchev Poly')
 plt.plot(lin, x, label = 'Linear')
-sns.scatterplot(data = dat_f, x = 'x_axis', y = 'Max Counts/COADD', hue = 'PSF Stars')
+if psf_num == 'phot':
+    sns.scatterplot(data = dat_f, x = 'x_axis', y = 'Max Counts/COADD', hue = 'Cal Stars')
+    
+else:
+    sns.scatterplot(data = dat_f, x = 'x_axis', y = 'Max Counts/COADD', hue = 'PSF Stars')
+
 plt.xlabel('Actual Counts/COADD', fontsize = len(psf_stars)/1.5)
 plt.ylabel('Theoretical Counts/COADD', fontsize = len(psf_stars)/1.5)
 plt.title('{0} (Frame {1})'.format(epoch, raw_frame), fontsize = len(psf_stars)/1.5)
 plt.legend()
 plt.savefig('{0}/dev_{1}.jpg'.format(os.getcwd(), epoch), format = 'jpg')
-plt.show()
+# plt.show()
+
+# Plotting the Max counts/coadd vs Normalized Flux
+x = np.linspace(0, np.max(dat_f['Normalized Flux']), 20)
+line = np.polyfit(np.sort(dat_f['Normalized Flux'])[0:2], np.sort(dat_f['x_axis'])[0:2], 1)
+z = np.poly1d(line)
+
+plt.figure(figsize = (len(psf_stars)/1.7, len(psf_stars)/1.7))
+if psf_num == 'phot':
+    sns.scatterplot(data = dat_f, x = 'Normalized Flux', y = 'x_axis', hue = 'Cal Stars')
+    plt.scatter(dat_f['Normalized Flux'], dat_f['Max Counts/COADD'], marker = 'x', label = 'Post-Correction', alpha = 0.7)
+    
+else:
+    sns.scatterplot(data = dat_f, x = 'Normalized Flux', y = 'x_axis', hue = 'PSF Stars')
+    plt.scatter(dat_f['Normalized Flux'], dat_f['Max Counts/COADD'], marker = 'x', label = 'Post-Correction', alpha = 0.7)
+    
+
+
+plt.grid()
+plt.xlabel('Flux / S3-22 Flux (K\' = 11.1)', fontsize = len(psf_stars)/1.5)
+plt.ylabel('Max Counts/COADD', fontsize = len(psf_stars)/1.5)
+plt.plot(x, z(x), label = 'Expected', linestyle = '--')
+plt.title('{0} (Frame {1})'.format(epoch, raw_frame), fontsize = len(psf_stars)/1.5)
+plt.legend()
+plt.savefig('{0}/nonlin_{1}.jpg'.format(os.getcwd(), epoch), format = 'jpg')
+# plt.show()
