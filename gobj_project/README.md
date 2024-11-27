@@ -6,7 +6,7 @@ and 2006 - 2024 (OSIRIS). We also measure its radial velocity with OSIRIS and ph
 
 
 
-##Lp residual analysis code
+## Lp residual analysis code
 To obtain NIRC2 astrometric and photometric measurements, we employ the **analysis_residuals.py** object.
 The **Lp_residual_analysis.py** code utilizes the analysis_residuals.py object.
 
